@@ -4,7 +4,6 @@
 import pygame as PG
 import sys
 from random import randint
-from math import sin, cos, radians
 PG.init()
 
 SCREEN_WIDTH = 1200
@@ -12,8 +11,6 @@ SCREEN_HEIGHT = 700
 SCREEN = PG.display.set_mode( (SCREEN_WIDTH, SCREEN_HEIGHT) )
 FPS = 60
 CLOCK = PG.time.Clock()
-
-PG.mouse.set_visible(False)
 
 PG.mixer.init()
 
@@ -37,6 +34,8 @@ player_left_image = PG.transform.scale( player_left_image, (32, 128) )
 player_right_image = PG.image.load('./src/images/p2_128x512px.png')
 player_right_image = PG.transform.scale( player_right_image, (32, 128) )
 
+win_score = 10
+
 class Label():
     def __init__(self, text, x, y, align = 'left', font_size = 36, color = (255, 255, 255)):
         self.font = PG.font.Font(None, font_size)
@@ -59,71 +58,56 @@ class Ball(PG.sprite.Sprite):
         PG.sprite.Sprite.__init__(self)
         self.image = ball_image
         self.rect = self.image.get_rect()
-        self.rect.centerx = SCREEN_WIDTH * 0.5
-        self.rect.centery = SCREEN_HEIGHT * 0.5
-        self.speed = 4
-        self.r_speed = 1
-        self.r_angle = 0
-        self.speed_label = Label(f'Ball speed: {self.speed}', SCREEN_WIDTH * 0.5, 30, 'center', 36, (255, 255, 0))
-        if randint(0, 1) == 1:
-            if randint(0, 1) == 1 : self.direction = 315
-            else : self.direction = 45
-        else:
-            if randint(0, 1) == 1 : self.direction = 135
-            else : self.direction = 225
+        self.restart()
 
     def move(self):
-        radians_direction = radians(self.direction)
-        self.rect.centerx += cos(radians_direction) * self.speed
-        self.rect.centery += sin(radians_direction) * self.speed
+        self.rect.centerx += self.speed_x
+        self.rect.centery += self.speed_y
 
         if self.rect.top < 0:
+            sound_hit_1.play()
             self.rect.top = 0
-            if self.direction == 315 : self.direction = 45
-            else : self.direction = 135
+            self.speed_y *= -1
 
         elif self.rect.bottom > SCREEN_HEIGHT:
+            sound_hit_1.play()
             self.rect.bottom = SCREEN_HEIGHT
-            if self.direction == 45 : self.direction = 315
-            else : self.direction = 225
+            self.speed_y *= -1
 
         elif self.rect.x < 0:
+            sound_hit_2.play()
             p2.get_score()
             self.restart()
 
         elif self.rect.right > SCREEN_WIDTH:
+            sound_hit_2.play()
             p1.get_score()
             self.restart()
 
         elif self.rect.colliderect(p1.rect):
+            sound_hit_1.play()
             self.rect.left = p1.rect.right
-            self.speed += 1
-            self.r_speed += 1
-            if self.direction == 135 : self.direction = 45
-            else : self.direction = 315
+            self.speed_x *= -1
 
         elif self.rect.colliderect(p2.rect):
+            sound_hit_1.play()
             self.rect.right = p2.rect.left
-            self.speed += 1
-            self.r_speed += 1
-            if self.direction == 45 : self.direction = 135
-            else : self.direction = 225
+            self.speed_x *= -1
 
     def restart(self):
         self.rect.centerx = SCREEN_WIDTH * 0.5
         self.rect.centery = SCREEN_HEIGHT * 0.5
-        self.speed = 5
-        self.r_speed = 1
-        self.speed_label.render(f'Ball speed: {self.speed}')
-        self.direction = randint(0, 355)
+        self.speed_x = 5 if randint(0, 1) == 1 else -5
+        self.speed_y = 5 if randint(0, 1) == 1 else -5
+        self.rotation_speed = 1
+        self.rotation_angle = 0
 
     def update(self):
         self.move()
-        self.r_angle += self.r_speed
-        self.rotated_image = PG.transform.rotate(self.image, self.r_angle)
+        self.rotation_angle += self.rotation_speed
+        self.rotated_image = PG.transform.rotate(self.image, self.rotation_angle)
         self.rotated_rect = self.rotated_image.get_rect(center=self.rect.center)
         SCREEN.blit(self.rotated_image, self.rotated_rect)
-        SCREEN.blit(self.speed_label.text, self.speed_label.rect)
 
 class Player(PG.sprite.Sprite):
     def __init__(self, is_left):
@@ -134,41 +118,58 @@ class Player(PG.sprite.Sprite):
         self.rect.centery = SCREEN_HEIGHT * 0.5
         self.score = 0
         self.speed = 5
-        if is_left : self.score_label = Label(f'Score: {self.score}', 15, 30, 'left', 36, (0, 255, 255))
-        else : self.score_label = Label(f'Score: {self.score}', SCREEN_WIDTH - 15, 30, 'right', 36, (255, 0, 255))
+        self.bot_speed = 3
+        self.is_player = True
+        if is_left :
+            self.score_label = Label(f'Score: {self.score}', 15, 30, 'left', 36, (0, 255, 255))
+            self.win_label = Label('Player left win!', SCREEN_WIDTH * 0.5, SCREEN_HEIGHT * 0.5, 'center', 120, (0, 255, 255))
+        else :
+            self.score_label = Label(f'Score: {self.score}', SCREEN_WIDTH - 15, 30, 'right', 36, (255, 0, 255))
+            self.win_label = Label('Player right win!', SCREEN_WIDTH * 0.5, SCREEN_HEIGHT * 0.5, 'center', 120, (255, 0, 255))
 
     def get_score(self):
         self.score += 1
         self.score_label.render(f'Score: {self.score}')
+    
+    def bot_move(self):
+        if ball.rect.centery > self.rect.centery : self.rect.centery += self.bot_speed
+        elif ball.rect.centery < self.rect.centery : self.rect.centery -= self.bot_speed
 
 class Player_left(Player):
     def __init__(self):
         super().__init__(True)
 
     def update(self):
-        KEY = PG.key.get_pressed()
-        if KEY[PG.K_w]:
-            self.rect.y -= self.speed
-            if self.rect.y < 0 : self.rect.y = 0
-        elif KEY[PG.K_s]:
-            self.rect.y += self.speed
-            if self.rect.bottom > SCREEN_HEIGHT : self.rect.bottom = SCREEN_HEIGHT
+        if self.is_player:
+            KEY = PG.key.get_pressed()
+            if KEY[PG.K_w]:
+                self.rect.y -= self.speed
+                if self.rect.y < 0 : self.rect.y = 0
+            elif KEY[PG.K_s]:
+                self.rect.y += self.speed
+                if self.rect.bottom > SCREEN_HEIGHT : self.rect.bottom = SCREEN_HEIGHT
+        else:
+            self.bot_move()
+        
         SCREEN.blit(self.image, self.rect)
         SCREEN.blit(self.score_label.text, self.score_label.rect)
     
-
 class Player_Right(Player):
     def __init__(self):
         super().__init__(False)
 
     def update(self):
-        KEY = PG.key.get_pressed()
-        if KEY[PG.K_UP]:
-            self.rect.y -= self.speed
-            if self.rect.y < 0 : self.rect.y = 0
-        elif KEY[PG.K_DOWN]:
-            self.rect.y += self.speed
-            if self.rect.bottom > SCREEN_HEIGHT : self.rect.bottom = SCREEN_HEIGHT
+        if self.is_player:
+            KEY = PG.key.get_pressed()
+            if KEY[PG.K_UP]:
+                self.rect.y -= self.speed
+                if self.rect.y < 0 : self.rect.y = 0
+            elif KEY[PG.K_DOWN]:
+                self.rect.y += self.speed
+                if self.rect.bottom > SCREEN_HEIGHT : self.rect.bottom = SCREEN_HEIGHT
+        else:
+            self.bot_move()
+
         SCREEN.blit(self.image, self.rect)
         SCREEN.blit(self.score_label.text, self.score_label.rect) 
  
@@ -187,11 +188,22 @@ while game_loop_is:
     for event in PG.event.get():
         if event.type == PG.QUIT or (event.type == PG.KEYDOWN and event.key == PG.K_ESCAPE):
             game_loop_is = False
+        elif event.type == PG.KEYUP and event.key == PG.K_1 : p1.is_player = not p1.is_player
+        elif event.type == PG.KEYUP and event.key == PG.K_2 : p2.is_player = not p2.is_player
 
     SCREEN.blit(bg_image, bg_draw_point)
-    p1.update()
-    p2.update()
-    ball.update()
+    if p1.score >= win_score :
+        SCREEN.blit(p1.win_label.text, p1.win_label.rect)
+        SCREEN.blit(p1.score_label.text, p1.score_label.rect)
+        SCREEN.blit(p2.score_label.text, p2.score_label.rect)
+    elif p2.score >= win_score :
+        SCREEN.blit(p2.win_label.text, p2.win_label.rect)
+        SCREEN.blit(p1.score_label.text, p1.score_label.rect)
+        SCREEN.blit(p2.score_label.text, p2.score_label.rect)
+    else:
+        p1.update()
+        p2.update()
+        ball.update()
 
     PG.display.flip()
 
